@@ -1,0 +1,9 @@
+BasedOnStyle: Microsoft
+IndentWidth: 4
+ColumnLimit: 120
+
+AlignAfterOpenBracket: Align
+BinPackArguments: false
+BinPackParameters: false
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
