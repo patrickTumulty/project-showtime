@@ -8,21 +8,49 @@ typedef struct GTLWindow GTLWindow;
 
 typedef struct GTLContext GTLContext;
 
-GTLContext *gtl_init(void);
+typedef struct GTLColor
+{
+    float r;
+    float g;
+    float b;
+    float a;
+} GTLColor;
 
-GTLWindow *gtl_create_window(GTLContext *context, int width, int height, const char *name);
+static const GTLColor GTL_COLOR_BLACK = {0.0f, 0.0f, 0.0f, 1.0f};
+static const GTLColor GTL_COLOR_WHITE = {1.0f, 1.0f, 1.0f, 1.0f};
+static const GTLColor GTL_COLOR_RED = {1.0f, 0.0f, 0.0f, 1.0f};
+static const GTLColor GTL_COLOR_GREEN = {0.0f, 1.0f, 0.0f, 1.0f};
+static const GTLColor GTL_COLOR_BLUE = {0.0f, 0.0f, 1.0f, 1.0f};
+
+static const GTLColor GTL_COLOR_YELLOW = {1.0f, 1.0f, 0.0f, 1.0f};
+static const GTLColor GTL_COLOR_CYAN = {0.0f, 1.0f, 1.0f, 1.0f};
+static const GTLColor GTL_COLOR_MAGENTA = {1.0f, 0.0f, 1.0f, 1.0f};
+
+static const GTLColor GTL_COLOR_ORANGE = {1.0f, 0.647f, 0.0f, 1.0f};
+static const GTLColor GTL_COLOR_PURPLE = {0.5f, 0.0f, 0.5f, 1.0f};
+static const GTLColor GTL_COLOR_PINK = {1.0f, 0.753f, 0.796f, 1.0f};
+static const GTLColor GTL_COLOR_BROWN = {0.647f, 0.165f, 0.165f, 1.0f};
+
+static const GTLColor GTL_COLOR_GRAY = {0.5f, 0.5f, 0.5f, 1.0f};
+static const GTLColor GTL_COLOR_LIGHT_GRAY = {0.75f, 0.75f, 0.75f, 1.0f};
+static const GTLColor GTL_COLOR_DARK_GRAY = {0.25f, 0.25f, 0.25f, 1.0f};
+
+static const GTLColor GTL_COLOR_TRANSPARENT = {0.0f, 0.0f, 0.0f, 0.0f};
+
+GTLContext *gtl_init_window(const int h, const int w, const char *name);
+GTLWindow *gtl_create_new_window(GTLContext *context, const int h, const int w, const char *name);
+
 void gtl_destroy_window(GTLWindow *window);
 
-bool gtl_window_should_close(const GTLWindow *window);
-void gtl_window_get_framebuffer_size(const GTLWindow *window, int *width, int *height);
+bool gtl_main_window_should_close(const GTLContext *context);
+void gtl_main_window_get_framebuffer_size(GTLContext *context, int *h, int *w);
 
-void gtl_begin_frame(GTLWindow *window, float r, float g, float b, float a);
-void gtl_draw_rectangle(GTLWindow *window, float x, float y, float w, float h);
+void gtl_begin_draw(GTLContext *context, const GTLColor bg);
+void gtl_end_draw(GTLContext *context);
+
+void gtl_draw_rectangle(GTLContext *context, const GTLColor color, const f32 x, const f32 y, const f32 w, const f32 h);
 
 void gtl_poll_events(void);
-
-void gtl_swap_buffers(GTLWindow *window);
-
 rc_t gtl_terminate(GTLContext *context);
 
 #endif // GTL_H
