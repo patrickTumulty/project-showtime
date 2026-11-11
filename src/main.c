@@ -12,8 +12,8 @@ int main(void)
         return -1;
     }
 
-    int x = 400;
-    int y = 400;
+    int x = 450;
+    int y = 450;
     int h = 100;
     int w = 100;
     u64 nextDraw = 0;
@@ -26,8 +26,8 @@ int main(void)
             nextDraw = t1 + 16;
             gtl_begin_draw(context, GTL_COLOR_PINK);
             {
-                f32 now_seconds = ((f32)t1) * 0.001f;
-                y += (int)roundf(sinf(2.0f * CROX_PI_F * 0.5f * now_seconds) * 10);
+                // f32 now_seconds = ((f32)t1) * 0.001f;
+                // y += (int)roundf(sinf(2.0f * CROX_PI_F * 0.5f * now_seconds) * 10);
                 gtl_draw_rectangle(context, GTL_COLOR_BLUE, x, y, w, h);
             }
             gtl_end_draw(context);

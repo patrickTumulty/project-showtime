@@ -97,7 +97,7 @@ static void rect_cleanup(RectRenderer *renderer)
     glDeleteBuffers(1, &renderer->EBO);
 }
 
-static GLuint compile_shader(GLenum type, const char *source)
+static GLuint gtl_compile_shader(GLenum type, const char *source)
 {
     GLuint shader = glCreateShader(type);
     glShaderSource(shader, 1, &source, NULL);
@@ -123,8 +123,8 @@ static GLuint compile_shader(GLenum type, const char *source)
 // first use instead of in gtl_init().
 static u32 gtl_create_program(const char *vs_source, const char *fs_source)
 {
-    GLuint vs = compile_shader(GL_VERTEX_SHADER, vs_source);
-    GLuint fs = compile_shader(GL_FRAGMENT_SHADER, fs_source);
+    GLuint vs = gtl_compile_shader(GL_VERTEX_SHADER, vs_source);
+    GLuint fs = gtl_compile_shader(GL_FRAGMENT_SHADER, fs_source);
 
     if (!vs || !fs)
     {
@@ -191,17 +191,6 @@ GTLContext *gtl_init_window(const int h, const int w, const char *name)
     context->main_window = gtl_create_new_window(context, w, h, name);
     context->main_window->is_main = true;
 
-    return context;
-}
-
-// The rect renderer's GL objects can only be created once a GL context is
-// current (after the first window), so this is called lazily on first draw.
-static bool gtl_ensure_rect_renderer(GTLWindow *window)
-{
-    RectRenderer *renderer = &window->context->rect_renderer;
-    if (renderer->shaderProgram)
-        return true;
-
     u32 program = gtl_create_program(VERTEX_SHADER, FRAGMENT_SHADER);
     if (!program)
     {
@@ -209,8 +198,9 @@ static bool gtl_ensure_rect_renderer(GTLWindow *window)
         return false;
     }
 
-    rect_init(renderer, program);
-    return true;
+    rect_init(&context->rect_renderer, program);
+
+    return context;
 }
 
 GTLWindow *gtl_create_new_window(GTLContext *context, const int h, const int w, const char *name)
@@ -279,13 +269,8 @@ void gtl_begin_draw(GTLContext *context, const GTLColor bg)
 
 void gtl_draw_rectangle(GTLContext *context, const GTLColor c, const f32 x, const f32 y, const f32 w, const f32 h)
 {
-    if (!gtl_ensure_rect_renderer(context->main_window))
-        return;
-
     RectRenderer *renderer = &context->rect_renderer;
 
-    // Projection maps pixel coordinates to NDC; refresh per draw in case the
-    // framebuffer was resized.
     int fw, fh;
     glfwGetFramebufferSize(context->main_window->glfw_window, &fw, &fh);
     set_ortho_projection(renderer->shaderProgram, (float)fw, (float)fh);
