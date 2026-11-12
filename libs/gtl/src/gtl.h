@@ -50,6 +50,10 @@ void gtl_end_draw(GTLContext *context);
 
 void gtl_draw_rectangle(GTLContext *context, const GTLColor color, const f32 x, const f32 y, const f32 w, const f32 h);
 
+void gtl_draw_circle(GTLContext *context, const GTLColor color, const f32 cx, const f32 cy, const f32 radius);
+
+void gtl_draw_triangle(GTLContext *context, const GTLColor color, const f32 x, const f32 y, const f32 w, const f32 h);
+
 void gtl_poll_events(void);
 rc_t gtl_terminate(GTLContext *context);
 

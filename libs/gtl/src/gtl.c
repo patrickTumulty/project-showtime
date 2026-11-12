@@ -5,6 +5,7 @@
 // clang-format on
 #include "linked_list.h"
 #include "shaders_embedded.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -18,11 +19,32 @@ typedef struct
     i32 colorLoc;      // Cached uniform location ID for the 'ourColor' RGBA color vector
 } RectRenderer;
 
+typedef struct
+{
+    u32 VAO;           // Vertex Array Object: stores vertex attribute configuration
+    u32 VBO;           // Vertex Buffer Object: stores the raw (X, Y) fan coordinates on the GPU
+    u32 shaderProgram; // ID of the compiled and linked vertex/fragment shader program
+    i32 modelLoc;      // Cached uniform location ID for the 'model' transformation matrix
+    i32 colorLoc;      // Cached uniform location ID for the 'ourColor' RGBA color vector
+} CircleRenderer;
+
+typedef struct
+{
+    u32 VAO;           // Vertex Array Object: stores vertex attribute configuration and EBO binding
+    u32 VBO;           // Vertex Buffer Object: stores the raw (X, Y) corner coordinates on the GPU
+    u32 EBO;           // Element Buffer Object: stores the vertex draw order (3 indices for 1 triangle)
+    u32 shaderProgram; // ID of the compiled and linked vertex/fragment shader program
+    i32 modelLoc;      // Cached uniform location ID for the 'model' transformation matrix
+    i32 colorLoc;      // Cached uniform location ID for the 'ourColor' RGBA color vector
+} TriangleRenderer;
+
 typedef struct GTLContext
 {
     llist_t windows_list;
     GTLWindow *main_window;
     RectRenderer rect_renderer;
+    CircleRenderer circle_renderer;
+    TriangleRenderer triangle_renderer;
 } GTLContext;
 
 typedef struct GTLWindow
@@ -91,6 +113,141 @@ static void rect_draw(RectRenderer *renderer, float x, float y, float w, float h
 
 // 3. Free GPU memory when done
 static void rect_cleanup(RectRenderer *renderer)
+{
+    glDeleteVertexArrays(1, &renderer->VAO);
+    glDeleteBuffers(1, &renderer->VBO);
+    glDeleteBuffers(1, &renderer->EBO);
+}
+
+// Unit circle (diameter 1) centered at (0.5, 0.5), drawn as a triangle fan:
+// one center vertex followed by a ring of points around the edge.
+#define GTL_CIRCLE_SEGMENTS 64
+
+static void circle_init(CircleRenderer *renderer, u32 shader)
+{
+    renderer->shaderProgram = shader;
+    renderer->modelLoc = glGetUniformLocation(shader, "model");
+    renderer->colorLoc = glGetUniformLocation(shader, "userColor");
+
+    // 2 * PI (kept local: M_PI is not available in strict C11 mode)
+    const f32 two_pi = 6.283185307179586f;
+
+    // clang-format off
+    f32 vertices[GTL_CIRCLE_SEGMENTS + 2][2];
+    vertices[0][0] = 0.5f; // Fan center
+    vertices[0][1] = 0.5f;
+    for (u32 i = 0; i <= GTL_CIRCLE_SEGMENTS; i++)
+    {
+        f32 angle = ((f32)i / (f32)GTL_CIRCLE_SEGMENTS) * two_pi;
+        vertices[i + 1][0] = 0.5f + 0.5f * cosf(angle);
+        vertices[i + 1][1] = 0.5f + 0.5f * sinf(angle);
+    }
+    // clang-format on
+
+    glGenVertexArrays(1, &renderer->VAO);
+    glGenBuffers(1, &renderer->VBO);
+
+    glBindVertexArray(renderer->VAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, renderer->VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    // 2 floats per vertex (X, Y)
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+}
+
+// Reusable Draw Function (center point + radius, pixel coordinates and RGBA 0.0-1.0)
+static void circle_draw(CircleRenderer *renderer, float cx, float cy, float radius, float r, float g, float b, float a)
+{
+    glUseProgram(renderer->shaderProgram);
+
+    // Column-major 4x4 matrix scaling the unit circle to 'radius' and
+    // translating it so the center lands on (cx, cy)
+    float d = 2.0f * radius;
+    // clang-format off
+    float model[16] = {
+        d,          0.0f,      0.0f, 0.0f,
+        0.0f,       d,         0.0f, 0.0f,
+        0.0f,       0.0f,      1.0f, 0.0f,
+        cx - radius, cy - radius, 0.0f, 1.0f
+    };
+    // clang-format on
+
+    glUniformMatrix4fv(renderer->modelLoc, 1, GL_FALSE, model);
+    glUniform4f(renderer->colorLoc, r, g, b, a);
+
+    glBindVertexArray(renderer->VAO);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, GTL_CIRCLE_SEGMENTS + 2);
+}
+
+// Free GPU memory when done
+static void circle_cleanup(CircleRenderer *renderer)
+{
+    glDeleteVertexArrays(1, &renderer->VAO);
+    glDeleteBuffers(1, &renderer->VBO);
+}
+
+// Upward-pointing triangle filling a w x h bounding box, in the same
+// unit-space as the rectangle: local (0, 0) is the top-left of the box and
+// local (1, 1) the bottom-right.
+static void triangle_init(TriangleRenderer *renderer, u32 shader)
+{
+    renderer->shaderProgram = shader;
+    renderer->modelLoc = glGetUniformLocation(shader, "model");
+    renderer->colorLoc = glGetUniformLocation(shader, "userColor");
+
+    // Unit triangle (X, Y only); apex at the top, base along the bottom
+    // clang-format off
+    f32 vertices[] = {
+        0.5f, 0.0f,  // Apex (top center)
+        0.0f, 1.0f,  // Bottom Left
+        1.0f, 1.0f   // Bottom Right
+    };
+    // clang-format on
+    u32 indices[] = {0, 1, 2};
+
+    glGenVertexArrays(1, &renderer->VAO);
+    glGenBuffers(1, &renderer->VBO);
+    glGenBuffers(1, &renderer->EBO);
+
+    glBindVertexArray(renderer->VAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, renderer->VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, renderer->EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+    // 2 floats per vertex (X, Y)
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+}
+
+// Reusable Draw Function (pixel coordinates and RGBA 0.0-1.0)
+static void triangle_draw(TriangleRenderer *renderer, float x, float y, float w, float h, float r, float g, float b, float a)
+{
+    glUseProgram(renderer->shaderProgram);
+
+    // Column-major 4x4 matrix combining Scale (w, h) and Translation (x, y)
+    // clang-format off
+    float model[16] = {
+        w,    0.0f, 0.0f, 0.0f,
+        0.0f, h,    0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        x,    y,    0.0f, 1.0f
+    };
+    // clang-format on
+
+    glUniformMatrix4fv(renderer->modelLoc, 1, GL_FALSE, model);
+    glUniform4f(renderer->colorLoc, r, g, b, a);
+
+    glBindVertexArray(renderer->VAO);
+    glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, 0);
+}
+
+// Free GPU memory when done
+static void triangle_cleanup(TriangleRenderer *renderer)
 {
     glDeleteVertexArrays(1, &renderer->VAO);
     glDeleteBuffers(1, &renderer->VBO);
@@ -199,6 +356,8 @@ GTLContext *gtl_init_window(const int h, const int w, const char *name)
     }
 
     rect_init(&context->rect_renderer, program);
+    circle_init(&context->circle_renderer, program);
+    triangle_init(&context->triangle_renderer, program);
 
     return context;
 }
@@ -240,9 +399,11 @@ void gtl_destroy_window(GTLWindow *window)
     if (!window)
         return;
 
-    // Free the renderer's GL objects while this window's GL context is still
+    // Free the renderers' GL objects while this window's GL context is still
     // current; destroying the window destroys the context.
     rect_cleanup(&window->context->rect_renderer);
+    circle_cleanup(&window->context->circle_renderer);
+    triangle_cleanup(&window->context->triangle_renderer);
 
     glfwDestroyWindow(window->glfw_window);
     free(window);
@@ -276,6 +437,28 @@ void gtl_draw_rectangle(GTLContext *context, const GTLColor c, const f32 x, cons
     set_ortho_projection(renderer->shaderProgram, (float)fw, (float)fh);
 
     rect_draw(renderer, x, y, w, h, c.r, c.g, c.b, c.a);
+}
+
+void gtl_draw_circle(GTLContext *context, const GTLColor c, const f32 cx, const f32 cy, const f32 radius)
+{
+    CircleRenderer *renderer = &context->circle_renderer;
+
+    int fw, fh;
+    glfwGetFramebufferSize(context->main_window->glfw_window, &fw, &fh);
+    set_ortho_projection(renderer->shaderProgram, (float)fw, (float)fh);
+
+    circle_draw(renderer, cx, cy, radius, c.r, c.g, c.b, c.a);
+}
+
+void gtl_draw_triangle(GTLContext *context, const GTLColor c, const f32 x, const f32 y, const f32 w, const f32 h)
+{
+    TriangleRenderer *renderer = &context->triangle_renderer;
+
+    int fw, fh;
+    glfwGetFramebufferSize(context->main_window->glfw_window, &fw, &fh);
+    set_ortho_projection(renderer->shaderProgram, (float)fw, (float)fh);
+
+    triangle_draw(renderer, x, y, w, h, c.r, c.g, c.b, c.a);
 }
 
 void gtl_poll_events(void)
